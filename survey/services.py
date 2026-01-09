@@ -6,46 +6,40 @@ from firebase_admin import credentials, db
 def initialize_firebase():
     """Initializes Firebase app if not already initialized."""
     if not firebase_admin._apps:
-        # Load credentials from ENV.
-        firebase_creds_input = os.environ.get('FIREBASE_CREDENTIALS')
-        
-        if firebase_creds_input:
-            try:
-                # 1. Strategy: Check if it's a file path
-                if os.path.isfile(firebase_creds_input):
-                    # Load directly from file path
-                    cred = credentials.Certificate(firebase_creds_input)
-                    print(f"Loaded Firebase credentials from file: {firebase_creds_input}")
-                else:
-                    # 2. Strategy: Parse as JSON string
-                    if isinstance(firebase_creds_input, str):
-                        cred_dict = json.loads(firebase_creds_input)
-                    else:
-                        cred_dict = firebase_creds_input
-                    
-                    # Validation for dict mode
-                    required_keys = ['type', 'project_id', 'private_key', 'client_email', 'token_uri']
-                    missing_keys = [key for key in required_keys if key not in cred_dict]
-                    
-                    if missing_keys:
-                        raise ValueError(f"FIREBASE_CREDENTIALS JSON is missing required keys: {', '.join(missing_keys)}")
-                    
-                    cred = credentials.Certificate(cred_dict)
+        # Load credentials from individual ENV variables.
+        try:
+            cred_dict = {
+                "type": os.environ.get('FIREBASE_TYPE'),
+                "project_id": os.environ.get('FIREBASE_PROJECT_ID'),
+                "private_key_id": os.environ.get('FIREBASE_PRIVATE_KEY_ID'),
+                "private_key": os.environ.get('FIREBASE_PRIVATE_KEY', '').replace('\\n', '\n'),
+                "client_email": os.environ.get('FIREBASE_CLIENT_EMAIL'),
+                "client_id": os.environ.get('FIREBASE_CLIENT_ID'),
+                "auth_uri": os.environ.get('FIREBASE_AUTH_URI'),
+                "token_uri": os.environ.get('FIREBASE_TOKEN_URI'),
+                "auth_provider_x509_cert_url": os.environ.get('FIREBASE_AUTH_PROVIDER_X509_CERT_URL'),
+                "client_x509_cert_url": os.environ.get('FIREBASE_CLIENT_X509_CERT_URL'),
+                "universe_domain": os.environ.get('FIREBASE_UNIVERSE_DOMAIN')
+            }
+            
+            # Filter out None values to see if we missed any critical ones easily or leave validation to Certificate
+            # But explicitly checking for some might be good.
+            # However, `credentials.Certificate` validation is robust enough usually if we just pass the dict.
+            # The previous logic had manual validation; we can rely on firebase_admin or keep it simple.
+            
+            # Important: Check if at least some key ones are present to avoid obscure errors
+            if not cred_dict['project_id'] or not cred_dict['private_key'] or not cred_dict['client_email']:
+                 raise ValueError("Missing critical Firebase environment variables (PROJECT_ID, PRIVATE_KEY, or CLIENT_EMAIL).")
 
-                firebase_admin.initialize_app(cred, {
-                    'databaseURL': os.environ.get('FIREBASE_DB_URL')
-                })
-                print("Firebase initialized successfully.")
-                
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON in FIREBASE_CREDENTIALS and not a valid file path: {e}")
-            except Exception as e:
-                # Re-raise if it's already one of our ValueErrors, otherwise wrap
-                if isinstance(e, ValueError):
-                    raise e
-                raise Exception(f"Failed to initialize Firebase: {e}")
-        else:
-             raise ValueError("FIREBASE_CREDENTIALS environment variable not found. Please check your .env file.")
+            cred = credentials.Certificate(cred_dict)
+            
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': os.environ.get('FIREBASE_DB_URL')
+            })
+            print("Firebase initialized successfully.")
+            
+        except Exception as e:
+            raise Exception(f"Failed to initialize Firebase: {e}")
 
 def save_entry(mode, location, questions):
     """
